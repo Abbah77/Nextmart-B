@@ -56,6 +56,13 @@ class Seller(Base):
     total_reviews = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Payment account details (new)
+    bank_name = Column(String(100))
+    account_number = Column(String(30))
+    account_name = Column(String(100))
+    opay_number = Column(String(30))
+    palmpay_number = Column(String(30))
+
     user = relationship("User", back_populates="seller_profile")
 
 
@@ -86,13 +93,12 @@ class Ticket(Base):
     customer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"))
     agreed_price = Column(Float, nullable=False)
-    customer_reference = Column(String(200))  # customer name/contact from whatsapp
-    payment_proof_url = Column(String(500))
+    customer_reference = Column(String(200))
     notes = Column(Text)
     status = Column(
         SAEnum(
-            "pending_payment", "payment_uploaded", "payment_confirmed",
-            "processing", "shipped", "arrived", "delivered", "completed",
+            "pending_payment", "payment_confirmed",
+            "processing", "shipped", "arrived", "completed",
             "disputed", "cancelled",
             name="ticket_status"
         ),
@@ -118,6 +124,7 @@ class Dispute(Base):
     evidence_urls = Column(Text)  # JSON array
     status = Column(SAEnum("open", "under_review", "resolved_refund", "resolved_warning", "resolved_closed", name="dispute_status"), default="open")
     admin_notes = Column(Text)
+    resolution_action = Column(String(50))  # warn_seller, suspend_seller, nothing
     resolved_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
 
