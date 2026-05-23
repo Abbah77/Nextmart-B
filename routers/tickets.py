@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, Ticket, Product, User
+from database import get_db, Ticket, Product, User, Seller
 from auth_utils import get_current_user, require_role
 from pydantic import BaseModel
 from typing import Optional
@@ -19,6 +19,7 @@ def generate_txn_id():
 def ticket_to_dict(t: Ticket, db: Session):
     product = db.query(Product).filter(Product.id == t.product_id).first()
     seller = db.query(User).filter(User.id == t.seller_id).first()
+    seller_profile = db.query(Seller).filter(Seller.user_id == t.seller_id).first()
     customer = db.query(User).filter(User.id == t.customer_id).first() if t.customer_id else None
     return {
         "id": str(t.id),
@@ -26,7 +27,6 @@ def ticket_to_dict(t: Ticket, db: Session):
         "status": t.status,
         "agreed_price": t.agreed_price,
         "customer_reference": t.customer_reference,
-        "payment_proof_url": t.payment_proof_url,
         "tracking_info": t.tracking_info,
         "notes": t.notes,
         "created_at": t.created_at,
@@ -40,6 +40,8 @@ def ticket_to_dict(t: Ticket, db: Session):
             "id": str(seller.id) if seller else None,
             "name": seller.name if seller else None,
             "email": seller.email if seller else None,
+            "whatsapp": seller_profile.whatsapp if seller_profile else None,
+            "shop_name": seller_profile.shop_name if seller_profile else None,
         },
         "customer": {
             "id": str(customer.id) if customer else None,
@@ -47,8 +49,6 @@ def ticket_to_dict(t: Ticket, db: Session):
         } if customer else None,
     }
 
-
-# ── SELLER: Create ticket ────────────────────────────────────────────────────
 
 class CreateTicketRequest(BaseModel):
     product_id: str
@@ -90,8 +90,6 @@ def create_ticket(
     return ticket_to_dict(ticket, db)
 
 
-# ── CUSTOMER: Lookup ticket by TXN-ID ───────────────────────────────────────
-
 @router.get("/lookup/{txn_id}")
 def lookup_ticket(
     txn_id: str,
@@ -103,8 +101,6 @@ def lookup_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket_to_dict(ticket, db)
 
-
-# ── CUSTOMER: Claim ticket ───────────────────────────────────────────────────
 
 @router.post("/claim/{txn_id}")
 def claim_ticket(
@@ -122,8 +118,6 @@ def claim_ticket(
     return ticket_to_dict(ticket, db)
 
 
-# ── CUSTOMER: Get my tickets ─────────────────────────────────────────────────
-
 @router.get("/customer/mine")
 def my_customer_tickets(
     current_user: User = Depends(require_role("customer")),
@@ -132,8 +126,6 @@ def my_customer_tickets(
     tickets = db.query(Ticket).filter(Ticket.customer_id == current_user.id).order_by(Ticket.created_at.desc()).all()
     return [ticket_to_dict(t, db) for t in tickets]
 
-
-# ── SELLER: Get my tickets ───────────────────────────────────────────────────
 
 @router.get("/seller/mine")
 def my_seller_tickets(
@@ -144,15 +136,12 @@ def my_seller_tickets(
     return [ticket_to_dict(t, db) for t in tickets]
 
 
-# ── SELLER: Update delivery status ──────────────────────────────────────────
-
 class UpdateStatusRequest(BaseModel):
     status: str
     tracking_info: Optional[str] = None
 
 
 SELLER_ALLOWED_STATUSES = ["processing", "shipped", "arrived"]
-CUSTOMER_CONFIRM_STATUS = "delivered"
 
 
 @router.put("/{ticket_id}/status")
@@ -182,7 +171,7 @@ def update_ticket_status(
         payload.status = "completed"
 
     elif current_user.role == "admin":
-        pass  # admin can set anything
+        pass
 
     ticket.status = payload.status
     if payload.tracking_info:
@@ -191,8 +180,6 @@ def update_ticket_status(
     db.commit()
     return ticket_to_dict(ticket, db)
 
-
-# ── ADMIN: All tickets ───────────────────────────────────────────────────────
 
 @router.get("/admin/all")
 def all_tickets(

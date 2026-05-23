@@ -12,7 +12,7 @@ class SignupRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
-    role: str = "customer"  # customer or seller
+    role: str = "customer"
     whatsapp: str = None
     shop_name: str = None
 
@@ -28,6 +28,18 @@ class TokenResponse(BaseModel):
     role: str
     name: str
     user_id: str
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str = None
+    shop_name: str = None
+    description: str = None
+    whatsapp: str = None
+    bank_name: str = None
+    account_number: str = None
+    account_name: str = None
+    opay_number: str = None
+    palmpay_number: str = None
 
 
 @router.post("/signup", status_code=201)
@@ -86,11 +98,70 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-def get_me(current_user: User = Depends(get_current_user)):
-    return {
+def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    data = {
         "id": str(current_user.id),
         "name": current_user.name,
         "email": current_user.email,
         "role": current_user.role,
         "created_at": current_user.created_at,
+    }
+    if current_user.role == "seller":
+        sp = db.query(Seller).filter(Seller.user_id == current_user.id).first()
+        if sp:
+            data["seller"] = {
+                "shop_name": sp.shop_name,
+                "description": sp.description,
+                "whatsapp": sp.whatsapp,
+                "rating": sp.rating,
+                "total_reviews": sp.total_reviews,
+                "verification_status": sp.verification_status,
+                "bank_name": sp.bank_name,
+                "account_number": sp.account_number,
+                "account_name": sp.account_name,
+                "opay_number": sp.opay_number,
+                "palmpay_number": sp.palmpay_number,
+            }
+    return data
+
+
+@router.put("/profile")
+def update_profile(
+    payload: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if payload.name:
+        current_user.name = payload.name
+
+    if current_user.role == "seller":
+        sp = db.query(Seller).filter(Seller.user_id == current_user.id).first()
+        if sp:
+            if payload.shop_name is not None: sp.shop_name = payload.shop_name
+            if payload.description is not None: sp.description = payload.description
+            if payload.whatsapp is not None: sp.whatsapp = payload.whatsapp
+            if payload.bank_name is not None: sp.bank_name = payload.bank_name
+            if payload.account_number is not None: sp.account_number = payload.account_number
+            if payload.account_name is not None: sp.account_name = payload.account_name
+            if payload.opay_number is not None: sp.opay_number = payload.opay_number
+            if payload.palmpay_number is not None: sp.palmpay_number = payload.palmpay_number
+
+    db.commit()
+    return {"message": "Profile updated successfully"}
+
+
+@router.get("/seller/{seller_id}/payment-info")
+def get_seller_payment_info(seller_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get seller payment details for customer to pay — only accessible by authenticated users"""
+    sp = db.query(Seller).filter(Seller.user_id == seller_id).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Seller not found")
+    return {
+        "shop_name": sp.shop_name,
+        "whatsapp": sp.whatsapp,
+        "bank_name": sp.bank_name,
+        "account_number": sp.account_number,
+        "account_name": sp.account_name,
+        "opay_number": sp.opay_number,
+        "palmpay_number": sp.palmpay_number,
     }
